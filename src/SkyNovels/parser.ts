@@ -14,6 +14,7 @@ import {
   mapNovelStatus,
   normalizeWhitespace,
   novelCoverUrl,
+  searchCoverUrl,
   novelUrl,
   parseChapterNumber,
   parseVolumeNumber,
@@ -44,7 +45,7 @@ export class SkyNovelsParser {
       mangaId: String(result.id),
       title: normalizeWhitespace(result.nvl_title),
       subtitle: normalizeWhitespace(result.nvl_writer) || undefined,
-      imageUrl: novelCoverUrl(result.image),
+      imageUrl: searchCoverUrl(result.image),
     }));
   }
 

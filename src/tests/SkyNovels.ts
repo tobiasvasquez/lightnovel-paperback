@@ -6,6 +6,7 @@ import {
   blockMangaId,
   getBlockRange,
   novelCoverUrl,
+  searchCoverUrl,
   parseSegmentMangaId,
   volumeMangaId,
   type SkyNovelsVolumeChapter,
@@ -48,7 +49,8 @@ export async function runTests(logger: TestLogger): Promise<void> {
       },
     ]);
 
-    expect(result?.imageUrl).to.equal(novelCoverUrl("c43cad7c-ea0d-4bfa-9f76-54e2bbaab112.webp"));
+    expect(result?.imageUrl).to.equal(searchCoverUrl("c43cad7c-ea0d-4bfa-9f76-54e2bbaab112.webp"));
+    expect(result?.imageUrl).to.match(/#cover\.jpg$/);
   });
 
   suite.test("chapters preserve global numbers and volume numbers", async () => {

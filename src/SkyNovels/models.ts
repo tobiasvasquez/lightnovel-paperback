@@ -266,6 +266,11 @@ export function novelCoverUrl(image: string | null | undefined): string {
   return `${IMAGE_PROXY_DOMAIN}?url=${encodeURIComponent(sourceUrl)}&output=jpg`;
 }
 
+export function searchCoverUrl(image: string | null | undefined): string {
+  const coverUrl = novelCoverUrl(image);
+  return coverUrl ? `${coverUrl}#cover.jpg` : "";
+}
+
 export function absoluteSkyNovelsUrl(url: string | null | undefined): string {
   if (!url) {
     return "";

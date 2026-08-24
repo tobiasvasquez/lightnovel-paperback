@@ -6,6 +6,7 @@ Current sources:
 
 - `LightNovelWorld`
 - `SkyNovels`
+- `NovelFull`
 
 ## Production Hosting
 
@@ -58,3 +59,5 @@ npm run serve
   - `/LightNovelWorld/index.js`
   - `/SkyNovels/info.json`
   - `/SkyNovels/index.js`
+  - `/NovelFull/info.json`
+  - `/NovelFull/index.js`

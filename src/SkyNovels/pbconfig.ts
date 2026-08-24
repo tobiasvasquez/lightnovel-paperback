@@ -3,7 +3,7 @@ import { ContentRating, SourceIntents, type ExtensionInfo } from "@paperback/typ
 export default {
   name: "SkyNovels",
   description: "Paperback 0.9 source for skynovels.net using the public API.",
-  version: "0.2.1",
+  version: "0.2.2",
   icon: "icon.svg",
   language: "es",
   contentRating: ContentRating.MATURE,

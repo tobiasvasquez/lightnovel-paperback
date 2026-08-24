@@ -32,9 +32,23 @@ export async function runTests(logger: TestLogger): Promise<void> {
 
   suite.test("WebP covers use the Paperback-compatible JPEG proxy", async () => {
     const coverUrl = novelCoverUrl("c43cad7c-ea0d-4bfa-9f76-54e2bbaab112.webp");
-    expect(coverUrl).to.contain("https://images.weserv.nl/");
+    expect(coverUrl).to.contain("https://wsrv.nl/");
     expect(coverUrl).to.contain("output=jpg");
     expect(coverUrl).to.contain(encodeURIComponent("https://api.skynovels.net/api/get-image/c43cad7c-ea0d-4bfa-9f76-54e2bbaab112.webp/novels/false"));
+  });
+
+  suite.test("search results expose the same JPEG cover URL", async () => {
+    const parser = new SkyNovelsParser();
+    const [result] = parser.parseSearchResults([
+      {
+        id: 179,
+        nvl_title: "Esclavo de las Sombras",
+        nvl_name: "esclavo-de-las-sombras",
+        image: "c43cad7c-ea0d-4bfa-9f76-54e2bbaab112.webp",
+      },
+    ]);
+
+    expect(result?.imageUrl).to.equal(novelCoverUrl("c43cad7c-ea0d-4bfa-9f76-54e2bbaab112.webp"));
   });
 
   suite.test("chapters preserve global numbers and volume numbers", async () => {

@@ -2,7 +2,7 @@ import { ContentRating } from "@paperback/types";
 
 export const DOMAIN = "https://www.skynovels.net";
 export const API_DOMAIN = "https://api.skynovels.net";
-export const IMAGE_PROXY_DOMAIN = "https://images.weserv.nl/";
+export const IMAGE_PROXY_DOMAIN = "https://wsrv.nl/";
 export const LANGUAGE = "es";
 export const SEARCH_PAGE_SIZE = 50;
 export const CHAPTERS_PER_PAGE = 500;
@@ -253,18 +253,17 @@ export function novelUrl(novelId: string | number, slug?: string | null): string
 }
 
 export function novelCoverUrl(image: string | null | undefined): string {
-  if (!image) {
+  const normalizedImage = image?.trim();
+  if (!normalizedImage) {
     return "";
   }
 
-  const sourceUrl = image.startsWith("http://") || image.startsWith("https://")
-    ? image
-    : `${API_DOMAIN}/api/get-image/${image}/novels/false`;
+  const sourceUrl = normalizedImage.startsWith("http://") || normalizedImage.startsWith("https://")
+    ? normalizedImage
+    : `${API_DOMAIN}/api/get-image/${normalizedImage}/novels/false`;
 
-  // Paperback 0.9 does not reliably render SkyNovels' remote WebP covers.
-  return /\.webp(?:[/?#]|$)/i.test(sourceUrl)
-    ? `${IMAGE_PROXY_DOMAIN}?url=${encodeURIComponent(sourceUrl)}&output=jpg`
-    : sourceUrl;
+  // Keep search cards and novel details on the same JPEG endpoint.
+  return `${IMAGE_PROXY_DOMAIN}?url=${encodeURIComponent(sourceUrl)}&output=jpg`;
 }
 
 export function absoluteSkyNovelsUrl(url: string | null | undefined): string {

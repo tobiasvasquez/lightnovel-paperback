@@ -12,6 +12,7 @@ import {
   absoluteUrl,
   chapterIdFromHref,
   mangaUrl,
+  novelCoverUrl,
   novelSlugFromHref,
   type ChapterPageInfo,
   type NovelPageInfo,
@@ -65,7 +66,7 @@ export class NovelFullParser {
       mangaId: result.slug,
       title: result.title,
       subtitle: result.author || undefined,
-      imageUrl: absoluteUrl(result.coverPath),
+      imageUrl: novelCoverUrl(result.coverPath),
       contentRating: this.inferContentRating(result.genres ?? []),
     }));
   }
@@ -119,7 +120,7 @@ export class NovelFullParser {
       throw new Error("Could not locate NovelFull novel details");
     }
 
-    const cover = absoluteUrl(
+    const cover = novelCoverUrl(
       $(".info-holder .books .book > img").first().attr("src") ??
         $(".info-holder .books .book > img").first().attr("data-src"),
     );

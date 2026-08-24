@@ -1,6 +1,7 @@
 import type { Chapter, ContentRating } from "@paperback/types";
 
 export const DOMAIN = "https://novelfull.com";
+export const IMAGE_PROXY_DOMAIN = "https://images.weserv.nl/";
 export const CHAPTERS_PER_PAGE = 50;
 export const CACHE_VERSION = 1;
 export const CHAPTER_CACHE_CHUNK_SIZE = 500;
@@ -89,6 +90,18 @@ export function absoluteUrl(url: string | undefined | null): string {
   }
 
   return joinUrl(DOMAIN, url);
+}
+
+export function novelCoverUrl(url: string | undefined | null): string {
+  const sourceUrl = absoluteUrl(url);
+  if (!sourceUrl) {
+    return "";
+  }
+
+  // Paperback 0.9 does not reliably render NovelFull's remote WebP covers.
+  return /\.webp(?:[/?#]|$)/i.test(sourceUrl)
+    ? `${IMAGE_PROXY_DOMAIN}?url=${encodeURIComponent(sourceUrl)}&output=jpg`
+    : sourceUrl;
 }
 
 export function searchUrl(query: string, page = 1): string {

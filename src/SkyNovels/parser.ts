@@ -4,6 +4,7 @@ import {
   type SearchResultItem,
   type SourceManga,
 } from "@paperback/types";
+import * as cheerio from "cheerio";
 
 import {
   LANGUAGE,
@@ -26,13 +27,16 @@ import {
   type SkyNovelsVolumeChapter,
 } from "./models";
 
-type VolumeChapterSet = {
+export type VolumeChapterSet = {
   volume: SkyNovelsVolume;
   chapters: SkyNovelsVolumeChapter[];
 };
 
 const INVISIBLE_CHARACTERS_REGEX = /[\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g;
 const ESCAPED_MARKDOWN_REGEX = /\\([\\`*_{}\[\]()#+\-.!>])/g;
+const HTML_TAG_REGEX = /<\/?(?:a|blockquote|br|div|em|h[1-6]|hr|img|li|ol|p|span|strong|ul)\b[^>]*>/i;
+const HTML_REMOVE_SELECTOR = "script,style,noscript,iframe,object,embed,form,input,button,textarea,select,video,audio,canvas,svg";
+const HTML_ALLOWED_TAGS = new Set(["a", "blockquote", "br", "div", "em", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "img", "li", "ol", "p", "span", "strong", "ul"]);
 
 export class SkyNovelsParser {
   parseSearchResults(results: SkyNovelsNovelSummary[]): SearchResultItem[] {
@@ -97,9 +101,9 @@ export class SkyNovelsParser {
     };
   }
 
-  parseChapters(sourceManga: SourceManga, volumeSets: VolumeChapterSet[]): Chapter[] {
+  parseChapters(sourceManga: SourceManga, volumeSets: VolumeChapterSet[], sortingIndexOffset = 0): Chapter[] {
     const chapters: Chapter[] = [];
-    let sortingIndex = 0;
+    let sortingIndex = sortingIndexOffset;
 
     for (const { volume, chapters: volumeChapters } of volumeSets) {
       const volumeNumber = parseVolumeNumber(volume.vlm_title);
@@ -114,7 +118,7 @@ export class SkyNovelsParser {
           title: cleanChapterTitle(volumeChapter.chp_title ?? volumeChapter.chp_index_title),
           volume: volumeNumber,
           publishDate: volumeChapter.createdAt ? new Date(volumeChapter.createdAt) : undefined,
-          sortingIndex,
+          sortingIndex: Number.isFinite(chapterNumber) ? Math.max(0, chapterNumber - 1) : sortingIndex,
         });
         sortingIndex += 1;
       }
@@ -124,7 +128,7 @@ export class SkyNovelsParser {
   }
 
   parseChapterDetails(chapter: Chapter, details: SkyNovelsChapterDetails): ChapterDetails {
-    const chapterHtml = this.renderMarkdown((details.chp_content ?? "").trim());
+    const chapterHtml = this.renderContent((details.chp_content ?? "").trim());
     if (!chapterHtml) {
       throw new Error(`Chapter content was empty for ${chapter.chapterId}`);
     }
@@ -138,6 +142,59 @@ export class SkyNovelsParser {
         `<style>body{line-height:1.65;font-size:1em;}img{max-width:100%;height:auto;}blockquote{margin:1em 0;padding-left:1em;border-left:3px solid #cccccc;}hr{border:none;border-top:1px solid #cccccc;margin:1.5em 0;}</style>` +
         `</head><body>${chapterHtml}</body></html>`,
     };
+  }
+
+  private renderContent(content: string): string {
+    const normalizedContent = content.replace(/\r\n?/g, "\n").replace(INVISIBLE_CHARACTERS_REGEX, "").trim();
+    if (!normalizedContent) {
+      return "";
+    }
+
+    return HTML_TAG_REGEX.test(normalizedContent)
+      ? this.sanitizeHtml(normalizedContent)
+      : this.renderMarkdown(normalizedContent);
+  }
+
+  private sanitizeHtml(content: string): string {
+    const $ = cheerio.load(`<div id="skynovels-content">${content}</div>`, undefined, false);
+    const root = $("#skynovels-content");
+    root.find(HTML_REMOVE_SELECTOR).remove();
+
+    root.find("*").each((_, element) => {
+      const node = $(element);
+      const tagName = element.tagName.toLowerCase();
+      if (!HTML_ALLOWED_TAGS.has(tagName)) {
+        node.replaceWith(node.contents());
+        return;
+      }
+
+      for (const attribute of Object.keys(element.attribs ?? {})) {
+        if (
+          !["href", "src", "alt", "title"].includes(attribute.toLowerCase()) ||
+          /^on[a-z-]+$/i.test(attribute) ||
+          /^data-/i.test(attribute) ||
+          /^(?:style|srcdoc|formaction|action|background|poster|xlink:href)$/i.test(attribute)
+        ) {
+          node.removeAttr(attribute);
+        }
+      }
+
+      for (const attribute of ["href", "src"]) {
+        const value = node.attr(attribute);
+        if (value === undefined) {
+          continue;
+        }
+
+        const safeUrl = this.safeContentUrl(value);
+        if (safeUrl) {
+          node.attr(attribute, safeUrl);
+        } else {
+          node.removeAttr(attribute);
+        }
+      }
+    });
+
+    return root.html()?.trim() ?? "";
   }
 
   private renderMarkdown(markdown: string): string {
@@ -156,7 +213,8 @@ export class SkyNovelsParser {
         continue;
       }
 
-      if (/^[-*_]{3,}$/.test(trimmedLine)) {
+      const structuralLine = trimmedLine.replace(/\\([*_ -])/g, "$1");
+      if (/^[-*_]{3,}$/.test(structuralLine)) {
         blocks.push("<hr />");
         continue;
       }
@@ -189,11 +247,29 @@ export class SkyNovelsParser {
         continue;
       }
 
+      if (/^\d+[.)]\s+/.test(trimmedLine)) {
+        const listItems = [trimmedLine.replace(/^\d+[.)]\s+/, "")];
+        while (index + 1 < lines.length && /^\d+[.)]\s+/.test((lines[index + 1] ?? "").trim())) {
+          index += 1;
+          listItems.push((lines[index] ?? "").trim().replace(/^\d+[.)]\s+/, ""));
+        }
+
+        blocks.push(`<ol>${listItems.map((item) => `<li>${this.renderInline(item)}</li>`).join("")}</ol>`);
+        continue;
+      }
+
       const paragraphLines = [line];
       while (index + 1 < lines.length) {
         const nextLine = lines[index + 1] ?? "";
         const nextTrimmed = nextLine.trim();
-        if (!nextTrimmed || /^[-*_]{3,}$/.test(nextTrimmed) || /^(#{1,6})\s+/.test(nextTrimmed) || /^>\s?/.test(nextTrimmed) || /^[-*]\s+/.test(nextTrimmed)) {
+        if (
+          !nextTrimmed ||
+          /^[-*_]{3,}$/.test(nextTrimmed) ||
+          /^(#{1,6})\s+/.test(nextTrimmed) ||
+          /^>\s?/.test(nextTrimmed) ||
+          /^[-*]\s+/.test(nextTrimmed) ||
+          /^\d+[.)]\s+/.test(nextTrimmed)
+        ) {
           break;
         }
 
@@ -218,13 +294,13 @@ export class SkyNovelsParser {
     let html = this.escapeHtml(escapedMarkdown);
 
     html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_, alt: string, url: string) => {
-      const imageUrl = this.escapeAttribute(absoluteSkyNovelsUrl(url.trim()));
+      const imageUrl = this.escapeAttribute(this.safeContentUrl(url.trim()));
       const altText = this.escapeAttribute(alt);
       return imageUrl ? `<img src="${imageUrl}" alt="${altText}" />` : altText;
     });
 
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_, text: string, url: string) => {
-      const href = this.escapeAttribute(absoluteSkyNovelsUrl(url.trim()));
+      const href = this.escapeAttribute(this.safeContentUrl(url.trim()));
       return href ? `<a href="${href}">${text}</a>` : text;
     });
 
@@ -250,5 +326,20 @@ export class SkyNovelsParser {
 
   private escapeAttribute(input: string): string {
     return this.escapeHtml(input).replace(/'/g, "&#39;");
+  }
+
+  private safeContentUrl(input: string): string {
+    const value = normalizeWhitespace(input);
+    if (!value || /^(?:javascript|data|vbscript):/i.test(value)) {
+      return "";
+    }
+
+    const absoluteUrl = absoluteSkyNovelsUrl(value);
+    try {
+      const parsedUrl = new URL(absoluteUrl);
+      return parsedUrl.protocol === "http:" || parsedUrl.protocol === "https:" ? parsedUrl.href : "";
+    } catch {
+      return "";
+    }
   }
 }

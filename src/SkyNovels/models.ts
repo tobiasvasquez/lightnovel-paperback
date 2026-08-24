@@ -4,6 +4,11 @@ export const DOMAIN = "https://www.skynovels.net";
 export const API_DOMAIN = "https://api.skynovels.net";
 export const LANGUAGE = "es";
 export const SEARCH_PAGE_SIZE = 50;
+export const CHAPTERS_PER_PAGE = 500;
+export const CHAPTER_CACHE_CHUNK_SIZE = 500;
+export const BLOCK_SIZE = 500;
+export const SEGMENTATION_THRESHOLD = 500;
+export const CACHE_VERSION = 1;
 
 const ADULT_GENRES = new Set([
   "adult",
@@ -11,14 +16,10 @@ const ADULT_GENRES = new Set([
   "ecchi",
   "erotica",
   "erotico",
-  "harem",
-  "josei",
   "mature",
   "maduro",
   "nsfw",
   "smut",
-  "yaoi",
-  "yuri",
 ]);
 
 export type SkyNovelsSearchResponse = {
@@ -26,6 +27,7 @@ export type SkyNovelsSearchResponse = {
   page?: number;
   limit?: number;
   total?: number;
+  totalPages?: number;
 };
 
 export type SkyNovelsNovelSummary = {
@@ -122,6 +124,13 @@ export type SkyNovelsChapterResponse = {
   chapter: SkyNovelsChapterDetails;
 };
 
+export type SkyNovelsNovelChaptersResponse = {
+  novel?: Array<{
+    id: number;
+    chapters?: SkyNovelsVolumeChapter[];
+  }>;
+};
+
 export type SkyNovelsChapterDetails = {
   id: number;
   chp_index_title?: string | null;
@@ -149,9 +158,9 @@ function buildQueryString(params: Record<string, string>): string {
     .join("&");
 }
 
-export function searchApiUrl(query: string): string {
+export function searchApiUrl(query: string, page = 1): string {
   const params = buildQueryString({
-    page: "1",
+    page: String(page),
     limit: String(SEARCH_PAGE_SIZE),
     q: query,
     order: "title",
@@ -177,17 +186,64 @@ export function novelVolumesApiUrl(novelId: string): string {
   return `${API_DOMAIN}/api/novels/${encodeURIComponent(novelId)}/volumes`;
 }
 
-export function volumeChaptersApiUrl(novelId: string, volumeId: number): string {
+export function volumeChaptersApiUrl(novelId: string, volumeId: number, page = 1): string {
   const params = buildQueryString({
-    page: "1",
-    limit: "2000",
+    page: String(page),
+    limit: String(CHAPTERS_PER_PAGE),
     _ts: String(Date.now()),
   });
   return `${API_DOMAIN}/api/volumes/${encodeURIComponent(novelId)}/${encodeURIComponent(String(volumeId))}/chapters?${params}`;
 }
 
+export function novelChaptersApiUrl(novelId: string): string {
+  return `${API_DOMAIN}/api/novel-chapters/${encodeURIComponent(novelId)}`;
+}
+
 export function chapterApiUrl(chapterId: string): string {
   return `${API_DOMAIN}/api/chapters/${encodeURIComponent(chapterId)}`;
+}
+
+export type SkyNovelsSegment =
+  | { kind: "legacy"; novelId: string }
+  | { kind: "volume"; novelId: string; volumeId: number }
+  | { kind: "block"; novelId: string; blockNumber: number };
+
+export function volumeMangaId(novelId: string, volumeId: number): string {
+  return `${novelId}::volume:${volumeId}`;
+}
+
+export function blockMangaId(novelId: string, blockNumber: number): string {
+  return `${novelId}::block:${blockNumber}`;
+}
+
+export function parseSegmentMangaId(mangaId: string): SkyNovelsSegment {
+  const volumeMatch = mangaId.match(/^(.*)::volume:(\d+)$/);
+  if (volumeMatch) {
+    return {
+      kind: "volume",
+      novelId: volumeMatch[1] ?? mangaId,
+      volumeId: Number(volumeMatch[2]),
+    };
+  }
+
+  const blockMatch = mangaId.match(/^(.*)::block:(\d+)$/);
+  if (blockMatch) {
+    return {
+      kind: "block",
+      novelId: blockMatch[1] ?? mangaId,
+      blockNumber: Number(blockMatch[2]),
+    };
+  }
+
+  return { kind: "legacy", novelId: mangaId };
+}
+
+export function getBlockRange(blockNumber: number): { rangeStart: number; rangeEnd: number } {
+  const rangeStart = Math.max(1, (blockNumber - 1) * BLOCK_SIZE + 1);
+  return {
+    rangeStart,
+    rangeEnd: rangeStart + BLOCK_SIZE - 1,
+  };
 }
 
 export function novelUrl(novelId: string | number, slug?: string | null): string {
@@ -359,7 +415,7 @@ export function buildSearchScore(query: string, novel: SkyNovelsNovelSummary): n
     }
   }
 
-  return bestScore + Number(novel.nvl_ratings_count ?? 0);
+  return bestScore;
 }
 
 export function hasStrongSearchMatch(query: string, novels: SkyNovelsNovelSummary[]): boolean {

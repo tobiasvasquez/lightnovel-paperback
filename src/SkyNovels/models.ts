@@ -2,6 +2,7 @@ import { ContentRating } from "@paperback/types";
 
 export const DOMAIN = "https://www.skynovels.net";
 export const API_DOMAIN = "https://api.skynovels.net";
+export const IMAGE_PROXY_DOMAIN = "https://images.weserv.nl/";
 export const LANGUAGE = "es";
 export const SEARCH_PAGE_SIZE = 50;
 export const CHAPTERS_PER_PAGE = 500;
@@ -256,11 +257,14 @@ export function novelCoverUrl(image: string | null | undefined): string {
     return "";
   }
 
-  if (image.startsWith("http://") || image.startsWith("https://")) {
-    return image;
-  }
+  const sourceUrl = image.startsWith("http://") || image.startsWith("https://")
+    ? image
+    : `${API_DOMAIN}/api/get-image/${image}/novels/false`;
 
-  return `${API_DOMAIN}/api/get-image/${image}/novels/false`;
+  // Paperback 0.9 does not reliably render SkyNovels' remote WebP covers.
+  return /\.webp(?:[/?#]|$)/i.test(sourceUrl)
+    ? `${IMAGE_PROXY_DOMAIN}?url=${encodeURIComponent(sourceUrl)}&output=jpg`
+    : sourceUrl;
 }
 
 export function absoluteSkyNovelsUrl(url: string | null | undefined): string {

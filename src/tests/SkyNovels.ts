@@ -5,6 +5,7 @@ import { readChapterCache, mergeChapterCache } from "../SkyNovels/cache.js";
 import {
   blockMangaId,
   getBlockRange,
+  novelCoverUrl,
   parseSegmentMangaId,
   volumeMangaId,
   type SkyNovelsVolumeChapter,
@@ -27,6 +28,13 @@ export async function runTests(logger: TestLogger): Promise<void> {
       blockNumber: 2,
     });
     expect(getBlockRange(2)).to.deep.equal({ rangeStart: 501, rangeEnd: 1000 });
+  });
+
+  suite.test("WebP covers use the Paperback-compatible JPEG proxy", async () => {
+    const coverUrl = novelCoverUrl("c43cad7c-ea0d-4bfa-9f76-54e2bbaab112.webp");
+    expect(coverUrl).to.contain("https://images.weserv.nl/");
+    expect(coverUrl).to.contain("output=jpg");
+    expect(coverUrl).to.contain(encodeURIComponent("https://api.skynovels.net/api/get-image/c43cad7c-ea0d-4bfa-9f76-54e2bbaab112.webp/novels/false"));
   });
 
   suite.test("chapters preserve global numbers and volume numbers", async () => {
